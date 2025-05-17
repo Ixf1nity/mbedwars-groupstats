@@ -1,0 +1,7 @@
+name: core
+version: '1.0-SNAPSHOT'
+main: me.infinity.groupstats.GroupStatsPlugin
+api-version: '1.18'
+load: STARTUP
+authors: [infinity]
+description: Addon for MBedWars to store and fetch player statistics and sorting into groups.

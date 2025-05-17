@@ -1,0 +1,35 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="VulnerableLibrariesLocal" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="isIgnoringEnabled" value="true" />
+      <option name="ignoredModules">
+        <list>
+          <option value="build" />
+          <option value="core" />
+          <option value="core" />
+          <option value="core" />
+          <option value="build" />
+        </list>
+      </option>
+      <option name="ignoredPackages">
+        <list>
+          <option value="org.eclipse.jetty:jetty-server:9.4.48.v20220622" />
+          <option value="junit:junit:4.10" />
+          <option value="com.google.guava:guava:17.0" />
+          <option value="org.yaml:snakeyaml:1.15" />
+          <option value="org.eclipse.jetty:jetty-http:9.4.48.v20220622" />
+        </list>
+      </option>
+      <option name="ignoredReasons">
+        <list>
+          <option value="Not exploitable" />
+          <option value="Not exploitable" />
+          <option value="Other" />
+          <option value="In progress" />
+          <option value="In progress" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

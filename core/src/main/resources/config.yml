@@ -14,3 +14,4 @@ MONGO:
 
 # update ticker (in minutes)
 UPDATE_TIMER: 1
+DEBUG: true

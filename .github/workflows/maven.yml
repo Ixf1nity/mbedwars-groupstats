@@ -32,7 +32,7 @@ jobs:
     - name: Create staging directory
       run: mkdir staging
     - name: Copy JAR to staging
-      run: cp target/*.jar staging
+      run: cp ./target/*.jar staging
     - name: Persist workflow data as artifacts
       uses: actions/upload-artifact@v4
       with:

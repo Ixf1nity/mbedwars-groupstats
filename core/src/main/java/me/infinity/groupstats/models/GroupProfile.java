@@ -1,7 +1,8 @@
-package me.infinity.groupstats;
+package me.infinity.groupstats.models;
 
 import com.google.gson.annotations.Expose;
 import lombok.Data;
+import me.infinity.groupstats.GroupNode;
 
 import java.util.Map;
 import java.util.UUID;

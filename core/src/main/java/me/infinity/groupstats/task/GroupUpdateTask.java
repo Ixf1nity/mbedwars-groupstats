@@ -1,4 +1,4 @@
-package me.infinity.groupstats;
+package me.infinity.groupstats.task;
 
 import lombok.RequiredArgsConstructor;
 import me.infinity.groupstats.manager.GroupManager;
@@ -11,8 +11,5 @@ public class GroupUpdateTask implements Runnable {
     @Override
     public void run() {
         groupManager.getCache().values().forEach(groupManager::save);
-        if (groupManager.getInstance().getConfiguration().getBoolean("DEBUG")) {
-            groupManager.getInstance().getLogger().info("Updating indexes, might cause lag. Who cares? Hussain is rich.");
-        }
     }
 }

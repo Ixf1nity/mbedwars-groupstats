@@ -90,6 +90,10 @@
       <id>jitpack.io</id>
       <url>https://jitpack.io</url>
     </repository>
+    <repository>
+      <id>marcely-repo</id>
+      <url>https://repo.marcely.de/repository/maven-public/</url>
+    </repository>
   </repositories>
 
   <dependencies>
@@ -120,6 +124,12 @@
       <groupId>org.mongodb</groupId>
       <artifactId>mongodb-driver-sync</artifactId>
       <version>5.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>de.marcely.bedwars</groupId>
+      <artifactId>API</artifactId>
+      <version>5.5.3</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 </project>

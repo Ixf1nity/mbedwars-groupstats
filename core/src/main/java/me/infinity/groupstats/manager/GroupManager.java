@@ -1,91 +1,61 @@
 package me.infinity.groupstats.manager;
 
+import com.google.gson.Gson;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.ReplaceOptions;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
-import me.infinity.groupstats.GroupProfile;
+import me.infinity.groupstats.models.GroupProfile;
 import me.infinity.groupstats.GroupStatsPlugin;
-import me.infinity.groupstats.GroupUpdateTask;
+import me.infinity.groupstats.task.GroupUpdateTask;
 import org.bson.Document;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
+import org.bson.conversions.Bson;
 
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-
-import static me.infinity.groupstats.GroupStatsPlugin.STATISTIC_MAP_TYPE;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Getter
 @RequiredArgsConstructor
-public class GroupManager implements Listener {
+public class GroupManager {
 
     private final GroupStatsPlugin instance;
+    private final Gson gson;
     private final MongoCollection<Document> profiles;
 
-    private Map<UUID, GroupProfile> cache;
+    private final Map<UUID, GroupProfile> cache = new ConcurrentHashMap<>();
+    private ExecutorService executorService;
 
     public void init() {
-        this.cache = new ConcurrentHashMap<>();
-
-        int updateTimer = instance.getConfiguration().getInt("UPDATE-TICK");
+        int updateTimer = instance.getConfiguration().getInt("UPDATE_TIMER", 5); // Default 5 minutes
         instance.getServer().getScheduler()
-                .runTaskTimer(instance, new GroupUpdateTask(this), 60 * 20L, 20L * 60 * updateTimer);
+                .runTaskTimerAsynchronously(
+                        instance,
+                        new GroupUpdateTask(this),
+                        60 * 20L,
+                        20L * 60 * updateTimer
+                );
 
-        instance.getServer().getPluginManager().registerEvents(this, instance);
+        this.executorService = Executors.newFixedThreadPool(4);
     }
 
-    @SneakyThrows
     public GroupProfile load(UUID uniqueId) {
-        GroupProfile groupProfile = new GroupProfile(uniqueId);
-        Optional<Document> optionalDocument = Optional.ofNullable(
-                profiles.find(
-                        Filters.eq("uniqueId",
-                                uniqueId)
-                        )
-                .first()
-        );
-
-        if (optionalDocument.isPresent()) {
-            groupProfile.setStatistics(
-                    instance.getGson().fromJson(
-                            optionalDocument.get().getString("statistics"),
-                            STATISTIC_MAP_TYPE)
-            );
-            return groupProfile;
-        } else return save(groupProfile);
+        Optional<GroupProfile> profile = Optional.of(instance.getMongoStorage().loadData(uniqueId, GroupProfile.class));
+        if (profile.isEmpty()) {
+            instance.getMongoStorage().saveData(uniqueId, new GroupProfile(uniqueId), GroupProfile.class);
+            return new GroupProfile(uniqueId);
+        }
+        return profile.get();
     }
 
-    @SneakyThrows
-    public GroupProfile save(GroupProfile profile) {
-        Document document = Document.parse(instance.getGson().toJson(profile));
-        this.profiles.replaceOne(
-                Filters.eq("uniqueId", profile.getUniqueId()),
-                document,
-                new ReplaceOptions().upsert(true)
-        );
-        return profile;
-    }
 
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onJoin(PlayerJoinEvent event) {
-        UUID uniqueId = event.getPlayer().getUniqueId();
-        GroupProfile profile = this.load(uniqueId);
-        this.cache.put(uniqueId, profile);
+    public void save(GroupProfile profile) {
+        instance.getMongoStorage().saveData(profile.getUniqueId(), profile, GroupProfile.class);
     }
-
-    @EventHandler(priority = EventPriority.LOW)
-    public void onQuit(PlayerQuitEvent event) {
-        UUID uniqueId = event.getPlayer().getUniqueId();
-        GroupProfile profile = this.cache.get(uniqueId);
-        this.save(profile);
-    }
-
 }

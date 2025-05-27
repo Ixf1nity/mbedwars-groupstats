@@ -46,7 +46,7 @@ public class GroupManager {
     }
 
     public GroupProfile load(UUID uniqueId) {
-        Optional<GroupProfile> profile = Optional.of(instance.getMongoStorage().loadData(uniqueId, GroupProfile.class));
+        Optional<GroupProfile> profile = Optional.ofNullable(instance.getMongoStorage().loadData(uniqueId, GroupProfile.class));
         if (profile.isEmpty()) {
             instance.getMongoStorage().saveData(uniqueId, new GroupProfile(uniqueId), GroupProfile.class);
             return new GroupProfile(uniqueId);

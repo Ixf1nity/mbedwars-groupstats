@@ -4,23 +4,29 @@ import de.marcely.bedwars.api.GameAPI;
 import de.marcely.bedwars.api.arena.ArenaStatus;
 import de.marcely.bedwars.api.event.arena.*;
 import de.marcely.bedwars.api.event.player.*;
+import lombok.Getter;
 import me.infinity.groupstats.GroupNode;
 import me.infinity.groupstats.models.GroupEnum;
 import me.infinity.groupstats.models.GroupProfile;
 import me.infinity.groupstats.manager.GroupManager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 
+@Getter
 public class GroupStatsListener implements Listener {
+
+    private final GroupManager groupManager;
 
     private final Map<UUID, GroupProfile> cache;
     private final ExecutorService executorService;
 
     public GroupStatsListener(GroupManager groupManager) {
+        this.groupManager = groupManager;
         this.cache = groupManager.getCache();
         this.executorService = groupManager.getExecutorService();
     }
@@ -56,7 +62,6 @@ public class GroupStatsListener implements Listener {
                             .computeIfAbsent(jsonFormat, k -> new GroupNode());
 
                     stats.getLosses().incrementAndGet();
-                    stats.getGamesPlayed().incrementAndGet();
                     stats.getWinstreak().set(0);
                 }
             });
@@ -129,6 +134,7 @@ public class GroupStatsListener implements Listener {
 
                 if (isFinalKill) {
                     victimStats.getFinalDeaths().incrementAndGet();
+                    victimStats.getGamesPlayed().incrementAndGet();
                 } else {
                     victimStats.getDeaths().incrementAndGet();
                 }
@@ -165,22 +171,6 @@ public class GroupStatsListener implements Listener {
                 }
             });
         });
-
-        // Handle quit winners if available
-        if (event.getQuitWinners() != null) {
-            event.getQuitWinners().forEach(player -> {
-                final UUID playerId = player.getUniqueId();
-                executorService.submit(() -> {
-                    GroupProfile profile = cache.get(playerId);
-                    if (profile != null) {
-                        GroupNode stats = profile.getStatistics()
-                                .computeIfAbsent(jsonFormat, k -> new GroupNode());
-                        stats.getWins().incrementAndGet();
-                        stats.getGamesPlayed().incrementAndGet();
-                    }
-                });
-            });
-        }
     }
 
     @EventHandler
@@ -202,6 +192,24 @@ public class GroupStatsListener implements Listener {
                 stats.getLosses().incrementAndGet();
                 stats.getWinstreak().set(0);
             }
+        });
+    }
+
+    // handle void
+    @EventHandler
+    public void onPlayerDeath(PlayerIngameDeathEvent event) {
+        if (event instanceof PlayerKillPlayerEvent) return;
+        if (!(event.getPlayer().getLastDamageCause().getCause() == EntityDamageEvent.DamageCause.VOID)) return;
+
+        final int playersPerTeam = event.getArena().getPlayersPerTeam();
+        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
+        final String jsonFormat = groupEnum.getJsonFormat();
+
+        executorService.submit(() -> {
+            GroupProfile profile = this.cache.get(event.getPlayer().getUniqueId());
+            GroupNode stats = profile.getStatistics()
+                    .computeIfAbsent(jsonFormat, k -> new GroupNode());
+            stats.getDeaths().incrementAndGet();
         });
     }
 }

@@ -66,7 +66,7 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
         // initialise mongo database;
         // Add debug logging
-        getLogger().info("Initializing MongoDB connection...");
+        this.getLogger().info("Initializing MongoDB connection...");
         this.mongoConnector = new MongoConnector(this, this.configuration);
         this.mongoConnector.init();
         
@@ -76,7 +76,7 @@ public final class GroupStatsPlugin extends JavaPlugin {
             return;
         }
         
-        getLogger().info("MongoDB connection successful, initializing GroupManager...");
+        this.getLogger().info("MongoDB connection successful, initializing GroupManager...");
         this.groupManager = new GroupManager(this, this.getGson(), mongoConnector.getProfiles());
         this.groupManager.init();
 

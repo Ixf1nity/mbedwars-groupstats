@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Data
 public class GroupProfile {
 
-    @Expose
     private final UUID uniqueId;
 
     @Expose

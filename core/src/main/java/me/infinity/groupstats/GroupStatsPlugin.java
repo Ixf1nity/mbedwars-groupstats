@@ -65,9 +65,18 @@ public final class GroupStatsPlugin extends JavaPlugin {
         }
 
         // initialise mongo database;
+        // Add debug logging
+        getLogger().info("Initializing MongoDB connection...");
         this.mongoConnector = new MongoConnector(this, this.configuration);
         this.mongoConnector.init();
-
+        
+        if (this.mongoConnector.getProfiles() == null) {
+            getLogger().severe("Failed to initialize MongoDB profiles collection!");
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
+        
+        getLogger().info("MongoDB connection successful, initializing GroupManager...");
         this.groupManager = new GroupManager(this, this.getGson(), mongoConnector.getProfiles());
         this.groupManager.init();
 

@@ -5,7 +5,7 @@ api-version: '1.18'
 load: STARTUP
 authors: [infinity]
 description: Addon for MBedWars to store and fetch player statistics and sorting into groups.
-depend: [MBedwars]
+depend: [MBedwars,PlaceholderAPI]
 commands:
   groupstats:
     description: testing command, will remove later.

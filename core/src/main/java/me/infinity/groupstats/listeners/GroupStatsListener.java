@@ -15,6 +15,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 @Getter
@@ -23,12 +24,10 @@ public class GroupStatsListener implements Listener {
     private final GroupManager groupManager;
 
     private final Map<UUID, GroupProfile> cache;
-    private final ExecutorService executorService;
 
     public GroupStatsListener(GroupManager groupManager) {
         this.groupManager = groupManager;
         this.cache = groupManager.getCache();
-        this.executorService = groupManager.getExecutorService();
     }
 
     @EventHandler
@@ -39,23 +38,22 @@ public class GroupStatsListener implements Listener {
 
         event.getArena().getPlayers().forEach(player -> {
             final UUID playerId = player.getUniqueId();
-            executorService.submit(() -> {
+            CompletableFuture.runAsync(() -> {
                 cache.get(playerId)
                         .getStatistics()
                         .putIfAbsent(jsonFormat, new GroupNode());
             });
         });
     }
-
+    
     @EventHandler
     public void onTeamEliminated(TeamEliminateEvent event) {
         final int playersPerTeam = event.getArena().getPlayersPerTeam();
         final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
         final String jsonFormat = groupEnum.getJsonFormat();
-
         event.getArena().getPlayersInTeam(event.getTeam()).forEach(player -> {
             final UUID playerId = player.getUniqueId();
-            executorService.submit(() -> {
+            CompletableFuture.runAsync(() -> {
                 GroupProfile profile = cache.get(playerId);
                 if (profile != null) {
                     GroupNode stats = profile.getStatistics()
@@ -76,7 +74,7 @@ public class GroupStatsListener implements Listener {
 
         // Handle bed breaker
         final UUID breakerId = event.getPlayer().getUniqueId();
-        executorService.submit(() -> {
+        CompletableFuture.runAsync(() -> {
             GroupProfile breakerProfile = cache.get(breakerId);
             if (breakerProfile != null) {
                 GroupNode stats = breakerProfile.getStatistics()
@@ -88,7 +86,7 @@ public class GroupStatsListener implements Listener {
         // Handle victims
         event.getArena().getPlayersInTeam(event.getTeam()).forEach(victim -> {
             final UUID victimId = victim.getUniqueId();
-            executorService.submit(() -> {
+            CompletableFuture.runAsync(() -> {
                 GroupProfile victimProfile = cache.get(victimId);
                 if (victimProfile != null) {
                     GroupNode stats = victimProfile.getStatistics()
@@ -110,7 +108,7 @@ public class GroupStatsListener implements Listener {
 
         // Killer stats
         final UUID killerId = event.getKiller().getUniqueId();
-        executorService.submit(() -> {
+        CompletableFuture.runAsync(() -> {
             GroupProfile killerProfile = cache.get(killerId);
             if (killerProfile != null) {
                 GroupNode killerStats = killerProfile.getStatistics()
@@ -126,7 +124,7 @@ public class GroupStatsListener implements Listener {
 
         // Victim stats
         final UUID victimId = event.getDamaged().getUniqueId();
-        executorService.submit(() -> {
+        CompletableFuture.runAsync(() -> {
             GroupProfile victimProfile = cache.get(victimId);
             if (victimProfile != null) {
                 GroupNode victimStats = victimProfile.getStatistics()
@@ -155,7 +153,7 @@ public class GroupStatsListener implements Listener {
         // Handle winners
         event.getWinners().forEach(player -> {
             final UUID playerId = player.getUniqueId();
-            executorService.submit(() -> {
+            CompletableFuture.runAsync(() -> {
                 GroupProfile profile = cache.get(playerId);
                 if (profile != null) {
                     GroupNode stats = profile.getStatistics()
@@ -183,7 +181,7 @@ public class GroupStatsListener implements Listener {
         final String jsonFormat = groupEnum.getJsonFormat();
 
         final UUID playerId = event.getPlayer().getUniqueId();
-        executorService.submit(() -> {
+        CompletableFuture.runAsync(() -> {
             GroupProfile profile = cache.get(playerId);
             if (profile != null) {
                 GroupNode stats = profile.getStatistics()
@@ -205,7 +203,7 @@ public class GroupStatsListener implements Listener {
         final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
         final String jsonFormat = groupEnum.getJsonFormat();
 
-        executorService.submit(() -> {
+        CompletableFuture.runAsync(() -> {
             GroupProfile profile = this.cache.get(event.getPlayer().getUniqueId());
             GroupNode stats = profile.getStatistics()
                     .computeIfAbsent(jsonFormat, k -> new GroupNode());

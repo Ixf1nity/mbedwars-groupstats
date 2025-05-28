@@ -5,6 +5,8 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import dev.dejvokep.boostedyaml.YamlDocument;
 import lombok.Getter;
+import me.clip.placeholderapi.PlaceholderAPI;
+import me.clip.placeholderapi.PlaceholderHook;
 import me.infinity.groupstats.command.TestCommand;
 import me.infinity.groupstats.listeners.GroupStatsListener;
 import me.infinity.groupstats.listeners.ProfileJoinListener;
@@ -75,23 +77,28 @@ public final class GroupStatsPlugin extends JavaPlugin {
             Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
-        
-        this.getLogger().info("MongoDB connection successful, initializing GroupManager...");
+
+        this.getLogger().info("Loading group manager...");
         this.groupManager = new GroupManager(this, this.getGson(), mongoConnector.getProfiles());
         this.groupManager.init();
 
+        this.getLogger().info("Loading MongoDB controller...");
         this.mongoStorage = new MongoStorage<>(this.groupManager.getProfiles(), gson);
 
+        this.getLogger().info("Registering test command...");
         this.getServer().getPluginCommand("groupstats").setExecutor(new TestCommand(this));
 
+        this.getLogger().info("Registering event listeners...");
         this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.groupManager), this);
         this.getServer().getPluginManager().registerEvents(new GroupStatsListener(this.groupManager), this);
+
+        this.getLogger().info("Hooking with PAPI...");
+        new GroupStatsExpansion(this).register();
     }
 
     @Override
     public void onDisable() {
         this.groupManager.getCache().values().forEach(groupManager::save);
         this.mongoConnector.shutdown();
-        this.groupManager.getExecutorService().shutdown();
     }
 }

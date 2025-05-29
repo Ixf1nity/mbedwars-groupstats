@@ -7,5 +7,5 @@ authors: [infinity]
 description: Addon for MBedWars to store and fetch player statistics and sorting into groups.
 depend: [MBedwars,PlaceholderAPI]
 commands:
-  groupstats:
+  gstest:
     description: testing command, will remove later.

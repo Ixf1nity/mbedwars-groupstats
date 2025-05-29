@@ -94,19 +94,19 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
         }
 
         switch (type) {
-            case GAMES_PLAYED:
+            case GAMESPLAYED:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getGamesPlayed().get()).sum());
-            case BEDS_BROKEN:
+            case BEDSBROKEN:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getBedsBroken().get()).sum());
-            case BEDS_LOST:
+            case BEDSLOST:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getBedsLost().get()).sum());
             case KILLS:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getKills().get()).sum());
             case DEATHS:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getDeaths().get()).sum());
-            case FINAL_KILLS:
+            case FINALKILLS:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getFinalKills().get()).sum());
-            case FINAL_DEATHS:
+            case FINALDEATHS:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getFinalDeaths().get()).sum());
             case WINS:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getWins().get()).sum());
@@ -114,7 +114,7 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getLosses().get()).sum());
             case WINSTREAK:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getWinstreak().get()).sum());
-            case HIGHEST_WINSTREAK:
+            case HIGHESTWINSTREAK:
                 return String.valueOf(stats.values().stream()
                         .mapToInt(value -> value.getHighestWinstreak().get())
                         .max()
@@ -142,19 +142,19 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
 
     private String handleGroupStats(GroupNode groupNode, StatisticType type) {
         switch (type) {
-            case GAMES_PLAYED:
+            case GAMESPLAYED:
                 return String.valueOf(groupNode.getGamesPlayed().get());
-            case BEDS_BROKEN:
+            case BEDSBROKEN:
                 return String.valueOf(groupNode.getBedsBroken().get());
-            case BEDS_LOST:
+            case BEDSLOST:
                 return String.valueOf(groupNode.getBedsLost().get());
             case KILLS:
                 return String.valueOf(groupNode.getKills().get());
             case DEATHS:
                 return String.valueOf(groupNode.getDeaths().get());
-            case FINAL_KILLS:
+            case FINALKILLS:
                 return String.valueOf(groupNode.getFinalKills().get());
-            case FINAL_DEATHS:
+            case FINALDEATHS:
                 return String.valueOf(groupNode.getFinalDeaths().get());
             case WINS:
                 return String.valueOf(groupNode.getWins().get());
@@ -162,7 +162,7 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
                 return String.valueOf(groupNode.getLosses().get());
             case WINSTREAK:
                 return String.valueOf(groupNode.getWinstreak().get());
-            case HIGHEST_WINSTREAK:
+            case HIGHESTWINSTREAK:
                 return String.valueOf(groupNode.getHighestWinstreak().get());
             case KDR:
                 return String.valueOf(getRatio(groupNode.getKills().get(), groupNode.getDeaths().get()));
@@ -186,17 +186,17 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
     }
 
     private enum StatisticType {
-        GAMES_PLAYED,
-        BEDS_BROKEN,
-        BEDS_LOST,
+        GAMESPLAYED,
+        BEDSBROKEN,
+        BEDSLOST,
         KILLS,
         DEATHS,
-        FINAL_KILLS,
-        FINAL_DEATHS,
+        FINALKILLS,
+        FINALDEATHS,
         WINS,
         LOSSES,
         WINSTREAK,
-        HIGHEST_WINSTREAK,
+        HIGHESTWINSTREAK,
         KDR,
         FKDR,
         BBLR,

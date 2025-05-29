@@ -179,7 +179,7 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
 
     private double getRatio(int numerator, int denominator) {
         if (denominator == 0) {
-            return 0;
+            return numerator;
         }
         double value = (double) numerator / denominator;
         return new BigDecimal(value).setScale(2, RoundingMode.HALF_UP).doubleValue();

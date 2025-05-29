@@ -27,7 +27,7 @@ public enum GroupEnum {
             case 1:
                 return GroupEnum.SOLO;
             default:
-                throw new RuntimeException("you suck mf, get a life");
+                throw new RuntimeException("get infinity to fix this shit");
         }
     }
 }

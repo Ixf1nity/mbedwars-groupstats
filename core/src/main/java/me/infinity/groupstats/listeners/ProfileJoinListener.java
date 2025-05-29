@@ -20,7 +20,7 @@ public class ProfileJoinListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         UUID uniqueId = event.getPlayer().getUniqueId();
         GroupProfile profile = this.groupManager.load(uniqueId);
-        System.out.println(profile.toString());
+        profile.setUniqueId(uniqueId);
         this.groupManager.getCache().put(uniqueId, profile);
     }
 
@@ -29,7 +29,6 @@ public class ProfileJoinListener implements Listener {
         UUID uniqueId = event.getPlayer().getUniqueId();
 
         GroupProfile profile = this.groupManager.getCache().get(uniqueId);
-        System.out.println(profile.toString());
         this.groupManager.save(profile);
         this.groupManager.getCache().remove(uniqueId);
     }

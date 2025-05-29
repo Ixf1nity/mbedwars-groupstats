@@ -2,11 +2,8 @@ package me.infinity.groupstats;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
 import dev.dejvokep.boostedyaml.YamlDocument;
 import lombok.Getter;
-import me.clip.placeholderapi.PlaceholderAPI;
-import me.clip.placeholderapi.PlaceholderHook;
 import me.infinity.groupstats.command.TestCommand;
 import me.infinity.groupstats.listeners.GroupStatsListener;
 import me.infinity.groupstats.listeners.ProfileJoinListener;
@@ -86,7 +83,7 @@ public final class GroupStatsPlugin extends JavaPlugin {
         this.mongoStorage = new MongoStorage<>(this.groupManager.getProfiles(), gson);
 
         this.getLogger().info("Registering test command...");
-        this.getServer().getPluginCommand("groupstats").setExecutor(new TestCommand(this));
+        this.getServer().getPluginCommand("gstest").setExecutor(new TestCommand(this));
 
         this.getLogger().info("Registering event listeners...");
         this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.groupManager), this);

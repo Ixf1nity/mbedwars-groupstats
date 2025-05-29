@@ -16,7 +16,6 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 
 @Getter
 public class GroupStatsListener implements Listener {

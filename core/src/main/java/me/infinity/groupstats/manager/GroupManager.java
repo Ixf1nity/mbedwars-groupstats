@@ -21,6 +21,7 @@ public class GroupManager {
     private final GroupStatsPlugin instance;
     private final Gson gson;
     private final MongoCollection<Document> profiles;
+    private RedisCacheManager redisCacheManager;
 
     private final Map<UUID, GroupProfile> cache = new ConcurrentHashMap<>();
 
@@ -28,19 +29,61 @@ public class GroupManager {
         int updateTimer = instance.getConfiguration().getInt("UPDATE_TIMER", 5); // Default 5 minutes
         instance.getServer().getScheduler()
                 .runTaskTimerAsynchronously(instance, new GroupUpdateTask(this), 60 * 20L, 20L * 60 * updateTimer);
+        
+        if (instance.getRedisConnector().isEnabled()) {
+            this.redisCacheManager = new RedisCacheManager(
+                instance.getRedisConnector().getJedisPool(),
+                gson,
+                instance.getConfiguration().getInt("REDIS.CACHE.TTL", 3600)
+            );
+        }
     }
 
     public GroupProfile load(UUID uniqueId) {
+        if (redisCacheManager != null) {
+            GroupProfile cached = redisCacheManager.getCachedProfile(uniqueId);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        
         Optional<GroupProfile> profile = Optional.ofNullable(instance.getMongoStorage().loadData(uniqueId, GroupProfile.class));
         if (profile.isEmpty()) {
-            instance.getMongoStorage().saveData(uniqueId, new GroupProfile(uniqueId), GroupProfile.class);
-            return new GroupProfile(uniqueId);
+            GroupProfile newProfile = new GroupProfile(uniqueId);
+            instance.getMongoStorage().saveData(uniqueId, newProfile, GroupProfile.class);
+            
+            if (redisCacheManager != null) {
+                redisCacheManager.cacheProfile(uniqueId, newProfile);
+            }
+            
+            return newProfile;
         }
-        return profile.get();
+        
+        GroupProfile loadedProfile = profile.get();
+        
+        if (redisCacheManager != null) {
+            redisCacheManager.cacheProfile(uniqueId, loadedProfile);
+        }
+        
+        return loadedProfile;
     }
-
 
     public void save(GroupProfile profile) {
         instance.getMongoStorage().saveData(profile.getUniqueId(), profile, GroupProfile.class);
+        
+        if (redisCacheManager != null) {
+            redisCacheManager.cacheProfile(profile.getUniqueId(), profile);
+            
+            profile.getStatistics().forEach((gameMode, stats) -> {
+                redisCacheManager.updateLeaderboards(profile.getUniqueId(), gameMode, stats);
+            });
+        }
+    }
+    
+    public void removeFromCache(UUID uniqueId) {
+        cache.remove(uniqueId);
+        if (redisCacheManager != null) {
+            redisCacheManager.removePlayer(uniqueId);
+        }
     }
 }

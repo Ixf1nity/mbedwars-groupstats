@@ -5,12 +5,15 @@ import com.google.gson.GsonBuilder;
 import dev.dejvokep.boostedyaml.YamlDocument;
 import lombok.Getter;
 import me.infinity.groupstats.command.TestCommand;
+import me.infinity.groupstats.command.StatusCommand;
 import me.infinity.groupstats.listeners.GroupStatsListener;
 import me.infinity.groupstats.listeners.ProfileJoinListener;
 import me.infinity.groupstats.manager.GroupManager;
 import me.infinity.groupstats.manager.MongoConnector;
 import me.infinity.groupstats.manager.MongoStorage;
+import me.infinity.groupstats.manager.RedisConnector;
 import me.infinity.groupstats.models.GroupProfile;
+import me.infinity.groupstats.service.ServerHeartbeatService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -27,8 +30,10 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
     private YamlDocument configuration;
     private MongoConnector mongoConnector;
+    private RedisConnector redisConnector;
     private GroupManager groupManager;
     private MongoStorage<GroupProfile> mongoStorage;
+    private ServerHeartbeatService heartbeatService;
 
     @Override
     public void onLoad() {
@@ -50,6 +55,8 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
         final int supportedAPIVersion = 203; // find the correct number in the tab "Table of API Versions"
         final String supportedVersionName = "5.5.3"; // update this accordingly to the number, otherwise the error will be wrong
+        final int supportedAPIVersion = 203;
+        final String supportedVersionName = "5.5.3";
 
         try {
             Class apiClass = Class.forName("de.marcely.bedwars.api.BedwarsAPI");
@@ -65,6 +72,10 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
         // initialise mongo database;
         // Add debug logging
+        this.getLogger().info("Initializing Redis connection...");
+        this.redisConnector = new RedisConnector(this, this.configuration);
+        this.redisConnector.init();
+        
         this.getLogger().info("Initializing MongoDB connection...");
         this.mongoConnector = new MongoConnector(this, this.configuration);
         this.mongoConnector.init();
@@ -84,6 +95,13 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
         this.getLogger().info("Registering test command...");
         this.getServer().getPluginCommand("gstest").setExecutor(new TestCommand(this));
+        
+        this.getLogger().info("Registering status command...");
+        this.getServer().getPluginCommand("gsstatus").setExecutor(new StatusCommand(this));
+        
+        this.getLogger().info("Starting heartbeat service...");
+        this.heartbeatService = new ServerHeartbeatService(this);
+        this.heartbeatService.start();
 
         this.getLogger().info("Registering event listeners...");
         this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.groupManager), this);
@@ -97,5 +115,13 @@ public final class GroupStatsPlugin extends JavaPlugin {
     public void onDisable() {
         this.groupManager.getCache().values().forEach(groupManager::save);
         this.mongoConnector.shutdown();
+        
+        if (this.redisConnector != null) {
+            this.redisConnector.shutdown();
+        }
+        
+        if (this.heartbeatService != null) {
+            this.heartbeatService.stop();
+        }
     }
 }

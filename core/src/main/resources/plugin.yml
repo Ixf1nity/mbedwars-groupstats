@@ -1,11 +1,22 @@
-name: MBedWars-GroupStats
-version: '1.0-SNAPSHOT'
+name: GroupStats
+version: '${project.version}'
 main: me.infinity.groupstats.GroupStatsPlugin
-api-version: '1.18'
-load: STARTUP
-authors: [infinity]
-description: Addon for MBedWars to store and fetch player statistics and sorting into groups.
-depend: [MBedwars,PlaceholderAPI]
+api-version: 1.19
+authors: [ Infinity, HussainBeast ]
+description: Group statistics plugin
+website: https://github.com/yourusername/groupstats
+
 commands:
   gstest:
-    description: testing command, will remove later.
+    description: Test command for group statistics
+    usage: /<command>
+  gsstatus:
+    description: View Redis and server network status
+    usage: /<command>
+permissions:
+  groupstats.test:
+    description: Allows use of the gstest command
+    default: true
+  groupstats.admin:
+    description: Allows use of admin commands
+    default: true

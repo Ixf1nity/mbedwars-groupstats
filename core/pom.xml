@@ -137,5 +137,15 @@
       <version>2.11.6</version>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>redis.clients</groupId>
+      <artifactId>jedis</artifactId>
+      <version>5.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>io.lettuce</groupId>
+      <artifactId>lettuce-core</artifactId>
+      <version>6.3.0.RELEASE</version>
+    </dependency>
   </dependencies>
 </project>

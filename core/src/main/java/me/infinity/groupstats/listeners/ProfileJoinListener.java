@@ -30,7 +30,7 @@ public class ProfileJoinListener implements Listener {
 
         GroupProfile profile = this.groupManager.getCache().get(uniqueId);
         this.groupManager.save(profile);
-        this.groupManager.getCache().remove(uniqueId);
+        this.groupManager.removeFromCache(uniqueId);
     }
 }
 

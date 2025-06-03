@@ -55,8 +55,6 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
         final int supportedAPIVersion = 203; // find the correct number in the tab "Table of API Versions"
         final String supportedVersionName = "5.5.3"; // update this accordingly to the number, otherwise the error will be wrong
-        final int supportedAPIVersion = 203;
-        final String supportedVersionName = "5.5.3";
 
         try {
             Class apiClass = Class.forName("de.marcely.bedwars.api.BedwarsAPI");

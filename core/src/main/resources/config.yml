@@ -1,17 +1,3 @@
-REDIS:
-  ENABLED: true
-  HOST: '172.18.0.1'
-  PORT: '25574'
-  PASSWORD: 'P55w0rd'
-  DATABASE: 0
-  POOL:
-    MAX_TOTAL: 20
-    MAX_IDLE: 10
-    MIN_IDLE: 2
-  CACHE:
-    TTL: 3600
-    LEADERBOARD_SIZE: 100
-
 MONGO:
   URI-MODE: true
   NORMAL:
@@ -23,12 +9,9 @@ MONGO:
       USERNAME: ''
       PASSWORD: ''
   URI:
-    DATABASE: 'groupstats'
-    CONNECTION_STRING: 'mongodb://admin:p55W0rdsss@172.18.0.1:25575/?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+2.5.0'
+    DATABASE: GroupStats
+    CONNECTION_STRING: mongodb://127.0.0.1:27017/GroupStats
 
-CACHE_STRATEGY: REDIS_MONGO
+# update ticker (in minutes)
 UPDATE_TIMER: 1
 DEBUG: true
-
-SERVER:
-  NAME: 'BedWars-1'  

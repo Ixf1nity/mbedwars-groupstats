@@ -1,28 +1,37 @@
 package me.infinity.groupstats;
 
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
-import me.infinity.groupstats.models.GroupProfile;
+import me.infinity.groupstats.manager.PlayerStatsManager; // Not directly used but good to be aware
+import me.infinity.groupstats.manager.ProxySyncManager;
+import me.infinity.groupstats.manager.RedisManager;
 import org.bukkit.OfflinePlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
+// Removed unused imports like GroupProfile, Map, ExecutionException, SneakyThrows
 
+/**
+ * PlaceholderAPI Expansion for GroupStats.
+ * Provides placeholders to display player statistics for different game groups.
+ * Placeholders are expected to use short stat keys as defined in {@link me.infinity.groupstats.models.StatKeys}
+ * (e.g., %groupstats_SOLO_k%, %groupstats_current_ws%).
+ * Overall stats are currently not supported via this expansion due to performance considerations.
+ */
 @RequiredArgsConstructor
 public class GroupStatsExpansion extends PlaceholderExpansion {
 
-    @Getter
-    private final GroupStatsPlugin instance;
+    private final GroupStatsPlugin plugin; // Keep for logging if needed, or get logger from managers
+    private final RedisManager redisManager;
+    private final ProxySyncManager proxySyncManager;
+    // PlayerStatsManager is not directly used here as PAPI needs synchronous access,
+    // which we'll achieve via RedisManager's hgetDirect.
 
     @Override
     public boolean persist() {
-        return true;
+        return true; // Data is persisted in Redis/MongoDB
     }
 
     @Override
@@ -32,164 +41,190 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
 
     @Override
     public @NotNull String getAuthor() {
-        return "infinity";
+        return plugin.getDescription().getAuthors().toString(); // Or your name
     }
 
     @Override
     public @NotNull String getVersion() {
-        return "1.0";
+        return plugin.getDescription().getVersion();
+    }
+
+    private String getStatFromRedis(String playerUUID, String groupKey, String statName) {
+        if (!redisManager.isEnabled()) {
+            return "Redis Disabled";
+        }
+        String redisPlayerGroupKey = "player:" + playerUUID + ":" + groupKey.toUpperCase();
+        return redisManager.hgetDirect(redisPlayerGroupKey, statName);
+    }
+
+    private long getLongStat(String playerUUID, String groupKey, String statName) {
+        String value = getStatFromRedis(playerUUID, groupKey, statName);
+        if (value == null) return 0L;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
     }
 
     @Override
-    @SneakyThrows
     public @Nullable String onRequest(OfflinePlayer player, @NotNull String params) {
-        if (player == null) {
-            return null;
+        if (player == null || player.getUniqueId() == null) {
+            return null; // Player is required
+        }
+        if (!redisManager.isEnabled()) {
+            return "Redis N/A"; // Indicate Redis is not available
         }
 
         String[] args = params.split("_");
-        if (args.length < 2 || args[0] == null || args[1] == null) {
-            return "INVALID_PLACEHOLDER";
+        if (args.length < 2) { // e.g., SOLO_kills
+            return "Invalid Format";
         }
 
-        String groupName = args[0];
-        StatisticType statisticType = StatisticType.fromString(args[1]);
+        String groupKeyParam = args[0];
+        String statKey = args[1]; // This is the key for StatisticType enum
+
+        String actualGroupKey;
+        if ("current".equalsIgnoreCase(groupKeyParam)) {
+            if (proxySyncManager.isLobbyServer()) {
+                return "N/A on Lobby"; // Cannot get "current" group on a lobby server
+            }
+            actualGroupKey = proxySyncManager.getGroupServerKey();
+        } else if ("overall".equalsIgnoreCase(groupKeyParam)) {
+            // As decided, overall stats are not supported directly via this PAPI method for now
+            // due to performance implications of calculating them synchronously.
+            return "Overall N/A"; // Or "Unsupported"
+        } else {
+            actualGroupKey = groupKeyParam.toUpperCase(); // Use the specified group key
+        }
+
+        if (actualGroupKey == null || actualGroupKey.isEmpty() || "UNKNOWN_GROUP".equals(actualGroupKey)) {
+            return "Invalid Group";
+        }
+
+        StatisticType statisticType = StatisticType.fromString(statKey);
         if (statisticType == null) {
-            return "0";
+            // If not a predefined StatisticType, try to fetch as a raw stat name
+            String rawStatValue = getStatFromRedis(player.getUniqueId().toString(), actualGroupKey, statKey);
+            return rawStatValue != null ? rawStatValue : "0";
         }
 
-        GroupProfile profile;
-        try {
-            profile = instance.getGson().fromJson(instance.getMongoStorage().loadRawDataAsync(player.getUniqueId()).get().toJson(), GroupProfile.class);
-        } catch (InterruptedException | ExecutionException e) {
-            this.getInstance().getLogger().warning(e.getMessage());
-            return "ERROR; " + e.getMessage();
-        }
+        String playerUUID = player.getUniqueId().toString();
 
-        if (profile == null) {
-            return "0";
-        }
+        // Handle specific statistic types, including ratios
+        switch (statisticType) {
+            // Direct stats
+            case GP:
+            case BB:
+            case BL:
+            case K:
+            case D:
+            case FK:
+            case FD:
+            case W:
+            case L:
+            case WS:
+            case HWS:
+                String statValue = getStatFromRedis(playerUUID, actualGroupKey, statisticType.getActualKey());
+                return statValue != null ? statValue : "0";
 
-        Map<String, GroupNode> stats = profile.getStatistics();
-
-        if (groupName.equalsIgnoreCase("overAll")) {
-            return handleOverallStats(stats, statisticType);
-        }
-
-        GroupNode groupNode = stats.get(groupName);
-        if (groupNode == null) {
-            return "0";
-        }
-
-        return handleGroupStats(groupNode, statisticType);
-    }
-
-    private String handleOverallStats(Map<String, GroupNode> stats, StatisticType type) {
-        if (stats.isEmpty()) {
-            return "0";
-        }
-
-        switch (type) {
-            case GAMESPLAYED:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getGamesPlayed().get()).sum());
-            case BEDSBROKEN:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getBedsBroken().get()).sum());
-            case BEDSLOST:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getBedsLost().get()).sum());
-            case KILLS:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getKills().get()).sum());
-            case DEATHS:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getDeaths().get()).sum());
-            case FINALKILLS:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getFinalKills().get()).sum());
-            case FINALDEATHS:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getFinalDeaths().get()).sum());
-            case WINS:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getWins().get()).sum());
-            case LOSSES:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getLosses().get()).sum());
-            case WINSTREAK:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getWinstreak().get()).sum());
-            case HIGHESTWINSTREAK:
-                return String.valueOf(stats.values().stream().mapToInt(value -> value.getHighestWinstreak().get()).max().orElse(0));
+            // Ratio stats
             case KDR:
-                int kills = stats.values().stream().mapToInt(value -> value.getKills().get()).sum();
-                int deaths = stats.values().stream().mapToInt(value -> value.getDeaths().get()).sum();
+                long kills = getLongStat(playerUUID, actualGroupKey, StatKeys.KILLS);
+                long deaths = getLongStat(playerUUID, actualGroupKey, StatKeys.DEATHS);
                 return String.valueOf(getRatio(kills, deaths));
             case FKDR:
-                int finalKills = stats.values().stream().mapToInt(value -> value.getFinalKills().get()).sum();
-                int finalDeaths = stats.values().stream().mapToInt(value -> value.getFinalDeaths().get()).sum();
+                long finalKills = getLongStat(playerUUID, actualGroupKey, StatKeys.FINAL_KILLS);
+                long finalDeaths = getLongStat(playerUUID, actualGroupKey, StatKeys.FINAL_DEATHS);
                 return String.valueOf(getRatio(finalKills, finalDeaths));
-            case BBLR:
-                int bedsBroken = stats.values().stream().mapToInt(value -> value.getBedsBroken().get()).sum();
-                int bedsLost = stats.values().stream().mapToInt(value -> value.getBedsLost().get()).sum();
+            case BBLR: // Bed Break/Loss Ratio
+                long bedsBroken = getLongStat(playerUUID, actualGroupKey, StatKeys.BEDS_BROKEN);
+                long bedsLost = getLongStat(playerUUID, actualGroupKey, StatKeys.BEDS_LOST);
                 return String.valueOf(getRatio(bedsBroken, bedsLost));
-            case WLR:
-                int wins = stats.values().stream().mapToInt(value -> value.getWins().get()).sum();
-                int losses = stats.values().stream().mapToInt(value -> value.getLosses().get()).sum();
+            case WLR: // Win/Loss Ratio
+                long wins = getLongStat(playerUUID, actualGroupKey, StatKeys.WINS);
+                long losses = getLongStat(playerUUID, actualGroupKey, StatKeys.LOSSES);
                 return String.valueOf(getRatio(wins, losses));
             default:
-                return "0";
+                return "Unknown Stat";
         }
     }
 
-    private String handleGroupStats(GroupNode groupNode, StatisticType type) {
-        switch (type) {
-            case GAMESPLAYED:
-                return String.valueOf(groupNode.getGamesPlayed().get());
-            case BEDSBROKEN:
-                return String.valueOf(groupNode.getBedsBroken().get());
-            case BEDSLOST:
-                return String.valueOf(groupNode.getBedsLost().get());
-            case KILLS:
-                return String.valueOf(groupNode.getKills().get());
-            case DEATHS:
-                return String.valueOf(groupNode.getDeaths().get());
-            case FINALKILLS:
-                return String.valueOf(groupNode.getFinalKills().get());
-            case FINALDEATHS:
-                return String.valueOf(groupNode.getFinalDeaths().get());
-            case WINS:
-                return String.valueOf(groupNode.getWins().get());
-            case LOSSES:
-                return String.valueOf(groupNode.getLosses().get());
-            case WINSTREAK:
-                return String.valueOf(groupNode.getWinstreak().get());
-            case HIGHESTWINSTREAK:
-                return String.valueOf(groupNode.getHighestWinstreak().get());
-            case KDR:
-                return String.valueOf(getRatio(groupNode.getKills().get(), groupNode.getDeaths().get()));
-            case FKDR:
-                return String.valueOf(getRatio(groupNode.getFinalKills().get(), groupNode.getFinalDeaths().get()));
-            case BBLR:
-                return String.valueOf(getRatio(groupNode.getBedsBroken().get(), groupNode.getBedsLost().get()));
-            case WLR:
-                return String.valueOf(getRatio(groupNode.getWins().get(), groupNode.getLosses().get()));
-            default:
-                return "0";
-        }
-    }
-
-    private double getRatio(int numerator, int denominator) {
+    private double getRatio(long numerator, long denominator) {
         if (denominator == 0) {
-            return numerator;
+            return numerator; // Avoid division by zero, return numerator as per original logic
         }
         double value = (double) numerator / denominator;
+        // Format to 2 decimal places
         return new BigDecimal(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
+    // Enum for stat types, ensures consistency in stat keys
+    // These short keys MUST match those defined in StatKeys.java and used in Redis.
+    /**
+     * Enum representing the types of statistics that can be requested via placeholders.
+     * It maps placeholder identifiers (like "k", "ws", "KDR") to their canonical short keys
+     * or identifies them as ratio calculations.
+     */
     private enum StatisticType {
-        GAMESPLAYED, BEDSBROKEN, BEDSLOST, KILLS, DEATHS, FINALKILLS, FINALDEATHS, WINS, LOSSES, WINSTREAK, HIGHESTWINSTREAK, KDR, FKDR, BBLR, WLR;
+        GP(StatKeys.GAMES_PLAYED),
+        BB(StatKeys.BEDS_BROKEN),
+        BL(StatKeys.BEDS_LOST),
+        K(StatKeys.KILLS),
+        D(StatKeys.DEATHS),
+        FK(StatKeys.FINAL_KILLS),
+        FD(StatKeys.FINAL_DEATHS),
+        W(StatKeys.WINS),
+        L(StatKeys.LOSSES),
+        WS(StatKeys.WINSTREAK),
+        HWS(StatKeys.HIGHEST_WINSTREAK),
 
+        // Ratio types - their string representation in PAPI will be e.g. "KDR"
+        // but they are composed of the short keys above.
+        KDR("kdr_ratio"), // Special internal key for ratio, not a direct Redis key
+        FKDR("fkdr_ratio"),
+        BBLR("bblr_ratio"),
+        WLR("wlr_ratio");
+
+        private final String key;
+
+        StatisticType(String key) {
+            this.key = key;
+        }
+
+        /**
+         * Gets the canonical short key used in Redis for direct stats.
+         * For ratio stats, this returns the descriptive internal key (e.g., "kdr_ratio").
+         * @return The short Redis key for direct stats, or an internal identifier for ratios.
+         */
+        public String getActualKey() {
+            return key;
+        }
+
+        /**
+         * Attempts to map a string identifier (from a PAPI placeholder) to a StatisticType.
+         * It matches against the enum constant's name (case-insensitive, e.g., "KDR")
+         * or, for direct stats, against its actual short key (case-insensitive, e.g., "k").
+         * @param text The string identifier from the placeholder.
+         * @return The matching StatisticType, or null if not found.
+         */
         public static StatisticType fromString(String text) {
-            if (text == null) {
-                return null;
+            if (text == null) return null;
+            for (StatisticType type : StatisticType.values()) {
+                // Match by enum name (e.g., PAPI placeholder "KDR" matches enum KDR)
+                if (type.name().equalsIgnoreCase(text)) {
+                    return type;
+                }
+                // For direct stats, allow matching by their short key if PAPI uses short keys
+                if (!isRatioType(type) && type.getActualKey().equalsIgnoreCase(text)) {
+                    return type;
+                }
             }
-            try {
-                return StatisticType.valueOf(text.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                return null;
-            }
+            return null;
+        }
+
+        public static boolean isRatioType(StatisticType type) {
+            return type == KDR || type == FKDR || type == BBLR || type == WLR;
         }
     }
 }

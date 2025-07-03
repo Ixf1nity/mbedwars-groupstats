@@ -15,3 +15,25 @@ MONGO:
 # update ticker (in minutes)
 UPDATE_TIMER: 1
 DEBUG: true
+
+# Proxy Sync Settings
+proxy-sync:
+  # Is this server a lobby server? Lobby servers do not save group-specific stats.
+  is-lobby: false
+  # The group this server is responsible for (e.g., SOLO, DUOS, QUADS)
+  # This value will be used as a key in Redis and MongoDB for namespacing stats.
+  group-server: "SOLO"
+
+# Redis Settings
+redis:
+  enabled: true # Whether to use Redis for caching stats
+  host: "127.0.0.1"
+  port: 6379
+  password: "" # Leave empty if no password
+  timeout: 2000 # Connection timeout in milliseconds
+  database: 0 # Redis database index
+  # Jedis Pool Settings
+  pool:
+    max-total: 8
+    max-idle: 8
+    min-idle: 0

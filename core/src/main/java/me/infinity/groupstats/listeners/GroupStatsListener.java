@@ -1,213 +1,230 @@
 package me.infinity.groupstats.listeners;
 
+package me.infinity.groupstats.listeners;
+
 import de.marcely.bedwars.api.GameAPI;
 import de.marcely.bedwars.api.arena.ArenaStatus;
 import de.marcely.bedwars.api.event.arena.*;
 import de.marcely.bedwars.api.event.player.*;
-import lombok.Getter;
-import me.infinity.groupstats.GroupNode;
+import lombok.RequiredArgsConstructor;
+import me.infinity.groupstats.GroupStatsPlugin;
+import me.infinity.groupstats.manager.PlayerStatsManager;
+import me.infinity.groupstats.manager.ProxySyncManager;
 import me.infinity.groupstats.models.GroupEnum;
-import me.infinity.groupstats.models.GroupProfile;
-import me.infinity.groupstats.manager.GroupManager;
+import me.infinity.groupstats.models.StatKeys; // Import StatKeys
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+// CompletableFuture might not be needed directly here if PlayerStatsManager handles async calls
 
-@Getter
+/**
+ * Listener for BedWars game events to update player statistics.
+ * Uses {@link PlayerStatsManager} to record stats, which internally uses short stat keys
+ * as defined in {@link me.infinity.groupstats.models.StatKeys}.
+ * It also respects the server's configured group responsibility via {@link ProxySyncManager}.
+ */
+@RequiredArgsConstructor
 public class GroupStatsListener implements Listener {
 
-    private final GroupManager groupManager;
+    private final PlayerStatsManager playerStatsManager;
+    private final ProxySyncManager proxySyncManager;
+    private final GroupStatsPlugin plugin; // For logging
 
-    private final Map<UUID, GroupProfile> cache;
-
-    public GroupStatsListener(GroupManager groupManager) {
-        this.groupManager = groupManager;
-        this.cache = groupManager.getCache();
+    /**
+     * Helper method to check if this server instance should record stats for the given game's group type.
+     * @param gameGroupKey The group key of the game derived from arena settings (e.g., "SOLO", "DUOS").
+     * @return True if stats should be recorded, false otherwise.
+     */
+    private boolean shouldRecordStatsForGroup(String gameGroupKey) {
+        if (proxySyncManager.isLobbyServer()) {
+            plugin.getLogger().finer(() -> "[GroupStatsListener] Currently on a lobby server. Skipping stat recording for game group: " + gameGroupKey);
+            return false;
+        }
+        String serverGroupKey = proxySyncManager.getGroupServerKey();
+        if (!serverGroupKey.equalsIgnoreCase(gameGroupKey)) {
+            plugin.getLogger().finer(() -> "[GroupStatsListener] Server group key (" + serverGroupKey + ") does not match game group key (" + gameGroupKey + "). Skipping stat recording.");
+            return false;
+        }
+        return true;
     }
+
+    /**
+     * Handles incrementing a player's stat, ensuring that the server is responsible for the game's group type.
+     * The {@code statName} is expected to be a short key from {@link StatKeys}.
+     * @param playerId The player's UUID.
+     * @param statName The short key of the stat to increment (from {@link StatKeys}).
+     * @param value The value to increment by.
+     * @param contextGameGroupKey The group key of the current game context.
+     */
+    private void handleStatIncrement(UUID playerId, String statName, long value, String contextGameGroupKey) {
+        if (!shouldRecordStatsForGroup(contextGameGroupKey)) return;
+        playerStatsManager.incrementStat(playerId, statName, value)
+            .exceptionally(ex -> {
+                plugin.getLogger().warning("[GroupStatsListener] Failed to increment stat '" + statName + "' for player " + playerId + ": " + ex.getMessage());
+                return null;
+            });
+    }
+
 
     @EventHandler
     public void onGameStart(RoundStartEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
+        if (!shouldRecordStatsForGroup(gameGroupKey)) return;
 
+        // gamesPlayed is typically incremented at the end of a game (loss/win)
+        // or when a player is fully eliminated if that's the logic.
+        // For RoundStart, we might ensure profiles are loaded if not done by join listener,
+        // but PlayerJoinListener already calls getPlayerGroupStats.
+        // If we need to ensure a player's hash exists in Redis for this group at game start:
         event.getArena().getPlayers().forEach(player -> {
             final UUID playerId = player.getUniqueId();
-            CompletableFuture.runAsync(() -> {
-                cache.get(playerId)
-                        .getStatistics()
-                        .putIfAbsent(jsonFormat, new GroupNode());
-            });
+            // playerStatsManager.getPlayerGroupStats(playerId, gameGroupKey); // This ensures the hash is there, already done by join.
+            // If we want to set a "lastPlayedGroup" type of stat:
+            // playerStatsManager.setStat(playerId, "lastPlayedGroup", gameGroupKey);
+            plugin.getLogger().finer(() -> "[GroupStatsListener] Game started for group " + gameGroupKey + ". Player: " + playerId);
         });
     }
 
     @EventHandler
     public void onTeamEliminated(TeamEliminateEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
+        // This event implies a loss for all players on the eliminated team.
+        // gamesPlayed is also incremented here.
         event.getArena().getPlayersInTeam(event.getTeam()).forEach(player -> {
             final UUID playerId = player.getUniqueId();
-            CompletableFuture.runAsync(() -> {
-                GroupProfile profile = cache.get(playerId);
-                if (profile != null) {
-                    GroupNode stats = profile.getStatistics()
-                            .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                    stats.getLosses().incrementAndGet();
-                    stats.getWinstreak().set(0);
-                }
-            });
+            handleStatIncrement(playerId, StatKeys.LOSSES, 1, gameGroupKey);
+            handleStatIncrement(playerId, StatKeys.GAMES_PLAYED, 1, gameGroupKey); // Increment gamesPlayed on loss
+            // Reset winstreak on loss.
+            if (shouldRecordStatsForGroup(gameGroupKey)) {
+                 playerStatsManager.setStat(playerId, StatKeys.WINSTREAK, "0")
+                    .exceptionally(ex -> {
+                        plugin.getLogger().warning("[GroupStatsListener] Failed to set stat '" + StatKeys.WINSTREAK + "' for player " + playerId + ": " + ex.getMessage());
+                        return null;
+                    });
+            }
         });
     }
 
     @EventHandler
     public void onBedBreak(ArenaBedBreakEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
 
         // Handle bed breaker
         final UUID breakerId = event.getPlayer().getUniqueId();
-        CompletableFuture.runAsync(() -> {
-            GroupProfile breakerProfile = cache.get(breakerId);
-            if (breakerProfile != null) {
-                GroupNode stats = breakerProfile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-                stats.getBedsBroken().incrementAndGet();
-            }
-        });
+        handleStatIncrement(breakerId, StatKeys.BEDS_BROKEN, 1, gameGroupKey);
 
-        // Handle victims
+        // Handle victims (team whose bed was broken)
         event.getArena().getPlayersInTeam(event.getTeam()).forEach(victim -> {
             final UUID victimId = victim.getUniqueId();
-            CompletableFuture.runAsync(() -> {
-                GroupProfile victimProfile = cache.get(victimId);
-                if (victimProfile != null) {
-                    GroupNode stats = victimProfile.getStatistics()
-                            .computeIfAbsent(jsonFormat, k -> new GroupNode());
-                    stats.getBedsLost().incrementAndGet();
-                }
-            });
+            handleStatIncrement(victimId, StatKeys.BEDS_LOST, 1, gameGroupKey);
         });
     }
 
     @EventHandler
     public void onPlayerKill(PlayerKillPlayerEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-        final boolean isFinalKill = event.getArena().isBedDestroyed(
-                event.getArena().getPlayerTeam(event.getDamaged())
-        );
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
+        final boolean isFinalKill = event.getArena().isBedDestroyed(event.getArena().getPlayerTeam(event.getDamaged()));
 
         // Killer stats
         final UUID killerId = event.getKiller().getUniqueId();
-        CompletableFuture.runAsync(() -> {
-            GroupProfile killerProfile = cache.get(killerId);
-            if (killerProfile != null) {
-                GroupNode killerStats = killerProfile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                if (isFinalKill) {
-                    killerStats.getFinalKills().incrementAndGet();
-                } else {
-                    killerStats.getKills().incrementAndGet();
-                }
-            }
-        });
+        handleStatIncrement(killerId, isFinalKill ? StatKeys.FINAL_KILLS : StatKeys.KILLS, 1, gameGroupKey);
 
         // Victim stats
         final UUID victimId = event.getDamaged().getUniqueId();
-        CompletableFuture.runAsync(() -> {
-            GroupProfile victimProfile = cache.get(victimId);
-            if (victimProfile != null) {
-                GroupNode victimStats = victimProfile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
+        handleStatIncrement(victimId, isFinalKill ? StatKeys.FINAL_DEATHS : StatKeys.DEATHS, 1, gameGroupKey);
 
-                if (isFinalKill) {
-                    victimStats.getFinalDeaths().incrementAndGet();
-                    victimStats.getGamesPlayed().incrementAndGet();
-                } else {
-                    victimStats.getDeaths().incrementAndGet();
-                }
+        // If it's a final death, the victim has effectively "lost" and completed their game participation.
+        if (isFinalKill) {
+            handleStatIncrement(victimId, StatKeys.GAMES_PLAYED, 1, gameGroupKey); // Increment gamesPlayed on final death
+             // Reset winstreak on final death (loss)
+            if (shouldRecordStatsForGroup(gameGroupKey)) {
+                 playerStatsManager.setStat(victimId, StatKeys.WINSTREAK, "0")
+                    .exceptionally(ex -> {
+                        plugin.getLogger().warning("[GroupStatsListener] Failed to set stat '" + StatKeys.WINSTREAK + "' for victim " + victimId + ": " + ex.getMessage());
+                        return null;
+                    });
             }
-        });
+        }
     }
 
     @EventHandler
     public void onGameEnd(RoundEndEvent event) {
-        if (event.isTie()) {
-            return;
-        }
+        if (event.isTie()) return;
 
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
 
         // Handle winners
         event.getWinners().forEach(player -> {
             final UUID playerId = player.getUniqueId();
-            CompletableFuture.runAsync(() -> {
-                GroupProfile profile = cache.get(playerId);
-                if (profile != null) {
-                    GroupNode stats = profile.getStatistics()
-                            .computeIfAbsent(jsonFormat, k -> new GroupNode());
+            handleStatIncrement(playerId, StatKeys.WINS, 1, gameGroupKey);
+            handleStatIncrement(playerId, StatKeys.GAMES_PLAYED, 1, gameGroupKey); // Increment gamesPlayed on win
 
-                    stats.getWins().incrementAndGet();
-                    stats.getGamesPlayed().incrementAndGet();
-
-                    final int newWinstreak = stats.getWinstreak().incrementAndGet();
-                    if (newWinstreak > stats.getHighestWinstreak().get()) {
-                        stats.getHighestWinstreak().set(newWinstreak);
-                    }
-                }
-            });
-        });
-    }
-
-    @EventHandler
-    public void onQuitArena(PlayerQuitArenaEvent event) {
-        if (event.getArena().getStatus() != ArenaStatus.RUNNING) return;
-        if (GameAPI.get().isSpectator(event.getPlayer())) return;
-        if (!event.getReason().isRageQuit()) return;
-
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-
-        final UUID playerId = event.getPlayer().getUniqueId();
-        CompletableFuture.runAsync(() -> {
-            GroupProfile profile = cache.get(playerId);
-            if (profile != null) {
-                GroupNode stats = profile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                stats.getLosses().incrementAndGet();
-                stats.getWinstreak().set(0);
+            if (shouldRecordStatsForGroup(gameGroupKey)) {
+                playerStatsManager.incrementStat(playerId, StatKeys.WINSTREAK, 1)
+                    .thenCompose(newWinstreak -> playerStatsManager.getPlayerGroupStats(playerId, gameGroupKey)) // Re-fetch to get current state including new winstreak
+                    .thenAccept(stats -> {
+                        if (stats != null) { // No need to check shouldRecordStatsForGroup again, already guarded
+                            long currentWinstreak = stats.getLongStat(StatKeys.WINSTREAK);
+                            long highestWinstreak = stats.getLongStat(StatKeys.HIGHEST_WINSTREAK);
+                            if (currentWinstreak > highestWinstreak) {
+                                playerStatsManager.setStat(playerId, StatKeys.HIGHEST_WINSTREAK, String.valueOf(currentWinstreak))
+                                 .exceptionally(ex -> {
+                                     plugin.getLogger().warning("[GroupStatsListener] Failed to set stat '" + StatKeys.HIGHEST_WINSTREAK + "' for player " + playerId + ": " + ex.getMessage());
+                                     return null;
+                                 });
+                            }
+                        }
+                    })
+                    .exceptionally(ex -> {
+                        plugin.getLogger().warning("[GroupStatsListener] Failed to update stat '" + StatKeys.WINSTREAK + "' for player " + playerId + ": " + ex.getMessage());
+                        return null;
+                    });
             }
         });
     }
 
-    // handle void
     @EventHandler
-    public void onPlayerDeath(PlayerIngameDeathEvent event) {
+    public void onQuitArena(PlayerQuitArenaEvent event) { // Player leaves an arena mid-game
+        if (event.getArena().getStatus() != ArenaStatus.RUNNING) return;
+        if (GameAPI.get().isSpectator(event.getPlayer())) return;
+
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
+        final UUID playerId = event.getPlayer().getUniqueId();
+
+        handleStatIncrement(playerId, StatKeys.LOSSES, 1, gameGroupKey);
+        handleStatIncrement(playerId, StatKeys.GAMES_PLAYED, 1, gameGroupKey);
+        if (shouldRecordStatsForGroup(gameGroupKey)) {
+            playerStatsManager.setStat(playerId, StatKeys.WINSTREAK, "0") // Reset winstreak
+                .exceptionally(ex -> {
+                    plugin.getLogger().warning("[GroupStatsListener] Failed to set stat '" + StatKeys.WINSTREAK + "' on arena quit for player " + playerId + ": " + ex.getMessage());
+                    return null;
+                });
+        }
+    }
+
+    @EventHandler
+    public void onPlayerIngameDeath(PlayerIngameDeathEvent event) { // For non-kill deaths like void, fall damage etc.
         if (event instanceof PlayerKillPlayerEvent) return;
-        if (!(event.getPlayer().getLastDamageCause().getCause() == EntityDamageEvent.DamageCause.VOID)) return;
 
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
+        String gameGroupKey = GroupEnum.which(event.getArena().getPlayersPerTeam()).getJsonFormat();
+        final UUID playerId = event.getPlayer().getUniqueId();
 
-        CompletableFuture.runAsync(() -> {
-            GroupProfile profile = this.cache.get(event.getPlayer().getUniqueId());
-            GroupNode stats = profile.getStatistics()
-                    .computeIfAbsent(jsonFormat, k -> new GroupNode());
-            stats.getDeaths().incrementAndGet();
-        });
+        boolean isFinalDeath = event.getArena().isBedDestroyed(event.getArena().getPlayerTeam(event.getPlayer()));
+
+        handleStatIncrement(playerId, isFinalDeath ? StatKeys.FINAL_DEATHS : StatKeys.DEATHS, 1, gameGroupKey);
+
+        if (isFinalDeath) {
+            handleStatIncrement(playerId, StatKeys.GAMES_PLAYED, 1, gameGroupKey);
+            if (shouldRecordStatsForGroup(gameGroupKey)) {
+                 playerStatsManager.setStat(playerId, StatKeys.WINSTREAK, "0")
+                    .exceptionally(ex -> {
+                        plugin.getLogger().warning("[GroupStatsListener] Failed to set stat '" + StatKeys.WINSTREAK + "' on final death for player " + playerId + ": " + ex.getMessage());
+                        return null;
+                    });
+            }
+        }
     }
 }

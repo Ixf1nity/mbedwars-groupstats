@@ -57,7 +57,7 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
             if (apiVersion < supportedAPIVersion)
                 throw new IllegalStateException();
-        } catch(Exception e) {
+        } catch (Exception e) {
             getLogger().warning("Sorry, your installed version of MBedwars is not supported. Please install at least v" + supportedVersionName);
             Bukkit.getPluginManager().disablePlugin(this);
             return;
@@ -68,7 +68,7 @@ public final class GroupStatsPlugin extends JavaPlugin {
         this.getLogger().info("Initializing MongoDB connection...");
         this.mongoConnector = new MongoConnector(this, this.configuration);
         this.mongoConnector.init();
-        
+
         if (this.mongoConnector.getProfiles() == null) {
             getLogger().severe("Failed to initialize MongoDB profiles collection!");
             Bukkit.getPluginManager().disablePlugin(this);
@@ -77,7 +77,6 @@ public final class GroupStatsPlugin extends JavaPlugin {
 
         this.getLogger().info("Loading group manager...");
         this.groupManager = new GroupManager(this, this.getGson(), mongoConnector.getProfiles());
-        this.groupManager.init();
 
         this.getLogger().info("Loading MongoDB controller...");
         this.mongoStorage = new MongoStorage<>(this.groupManager.getProfiles(), gson);
@@ -86,7 +85,7 @@ public final class GroupStatsPlugin extends JavaPlugin {
         this.getServer().getPluginCommand("gstest").setExecutor(new TestCommand(this));
 
         this.getLogger().info("Registering event listeners...");
-        this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.groupManager), this);
+        this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.groupManager, this), this);
         this.getServer().getPluginManager().registerEvents(new GroupStatsListener(this.groupManager), this);
 
         this.getLogger().info("Hooking with PAPI...");

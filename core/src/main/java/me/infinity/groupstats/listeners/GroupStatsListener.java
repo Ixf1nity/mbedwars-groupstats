@@ -44,7 +44,7 @@ public class GroupStatsListener implements Listener {
             });
         });
     }
-    
+
     @EventHandler
     public void onTeamEliminated(TeamEliminateEvent event) {
         final int playersPerTeam = event.getArena().getPlayersPerTeam();
@@ -174,6 +174,7 @@ public class GroupStatsListener implements Listener {
     public void onQuitArena(PlayerQuitArenaEvent event) {
         if (event.getArena().getStatus() != ArenaStatus.RUNNING) return;
         if (GameAPI.get().isSpectator(event.getPlayer())) return;
+        if (!event.getReason().isRageQuit()) return;
 
         final int playersPerTeam = event.getArena().getPlayersPerTeam();
         final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);

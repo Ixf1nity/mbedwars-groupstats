@@ -24,12 +24,6 @@ public class GroupManager {
 
     private final Map<UUID, GroupProfile> cache = new ConcurrentHashMap<>();
 
-    public void init() {
-        int updateTimer = instance.getConfiguration().getInt("UPDATE_TIMER", 5); // Default 5 minutes
-        instance.getServer().getScheduler()
-                .runTaskTimerAsynchronously(instance, new GroupUpdateTask(this), 60 * 20L, 20L * 60 * updateTimer);
-    }
-
     public GroupProfile load(UUID uniqueId) {
         Optional<GroupProfile> profile = Optional.ofNullable(instance.getMongoStorage().loadData(uniqueId, GroupProfile.class));
         if (profile.isEmpty()) {

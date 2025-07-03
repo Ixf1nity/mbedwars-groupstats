@@ -58,16 +58,45 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
             return "0";
         }
 
-        GroupProfile profile;
-        try {
-            profile = instance.getGson().fromJson(instance.getMongoStorage().loadRawDataAsync(player.getUniqueId()).get().toJson(), GroupProfile.class);
-        } catch (InterruptedException | ExecutionException e) {
-            this.getInstance().getLogger().warning(e.getMessage());
-            return "ERROR; " + e.getMessage();
-        }
+        // Attempt to get the profile from cache first for efficiency.
+        GroupProfile profile = instance.getGroupManager().getCache().get(player.getUniqueId());
 
         if (profile == null) {
-            return "0";
+            // Profile not in cache, attempt to load from MongoDB.
+            // This is a blocking call, suitable for PAPI's synchronous nature.
+            // On game servers, profiles are usually cached by ProfileJoinListener.
+            // On lobby servers, this will be a DB hit if not cached by other means.
+            try {
+                profile = instance.getMongoStorage().loadDataAsync(player.getUniqueId(), GroupProfile.class).get();
+                if (profile == null) {
+                    // Player has no data in the database.
+                    // Create a new, empty profile for the purpose of these placeholder requests.
+                    // This ensures that requests for stats from a non-existent profile correctly show "0"
+                    // for individual stats, consistent with how an empty GroupNode would behave.
+                    profile = new GroupProfile(player.getUniqueId());
+                }
+                // Optionally, put the loaded profile into the GroupManager's cache.
+                // This could be beneficial even for lobby servers for frequently requested online players
+                // to reduce DB load for subsequent requests for the same player during their session.
+                // However, GroupManager's cache is primarily managed by ProfileJoinListener on game servers.
+                // If is-lobby is true, GroupManager might not be actively populating this cache.
+                // Consider the implications of cache size if many unique players are looked up.
+                // instance.getGroupManager().getCache().put(player.getUniqueId(), profile);
+            } catch (InterruptedException | ExecutionException e) {
+                this.getInstance().getLogger().warning("Error fetching GroupProfile for PAPI: " + e.getMessage());
+                // If DB error, create a temporary empty profile to avoid further errors and return "0" for stats.
+                profile = new GroupProfile(player.getUniqueId());
+                // return "ERROR_DB"; // Or let it proceed to return "0" for stats
+            }
+        }
+        // Now, profile should ideally not be null. If it somehow is (e.g. constructor failed, though unlikely),
+        // the subsequent .getStatistics() would NPE. The original code had a check here.
+        // Given we instantiate a new GroupProfile if DB load returns null or on error,
+        // profile should be non-null unless new GroupProfile() fails.
+        // A final check for safety before calling methods on 'profile' is good.
+        if (profile == null) {
+             this.getInstance().getLogger().severe("Critical error: GroupProfile is null in PAPI expansion even after fallback.");
+             return "ERROR_CRITICAL";
         }
 
         Map<String, GroupNode> stats = profile.getStatistics();

@@ -15,3 +15,13 @@ MONGO:
 # update ticker (in minutes)
 UPDATE_TIMER: 1
 DEBUG: true
+
+# Server type specific settings
+# is-lobby: Set to true if this server is a lobby server and should only provide placeholders.
+#           Set to false if this is a game server that should actively track stats.
+is-lobby: false
+
+# server-group: Defines the specific game mode this server is responsible for.
+#               Examples: SOLO, DUOS, TRIPLES, QUADS (must match a value from GroupEnum)
+#               Stats will only be recorded for games matching this group type.
+server-group: "SOLO"

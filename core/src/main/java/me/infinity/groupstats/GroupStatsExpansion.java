@@ -60,11 +60,7 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
 
         GroupProfile profile;
         try {
-            profile = instance.getGson()
-                    .fromJson(
-                            instance.getMongoStorage().loadRawDataAsync(player.getUniqueId()).get().toJson(),
-                            GroupProfile.class
-                    );
+            profile = instance.getGson().fromJson(instance.getMongoStorage().loadRawDataAsync(player.getUniqueId()).get().toJson(), GroupProfile.class);
         } catch (InterruptedException | ExecutionException e) {
             this.getInstance().getLogger().warning(e.getMessage());
             return "ERROR; " + e.getMessage();
@@ -115,10 +111,7 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
             case WINSTREAK:
                 return String.valueOf(stats.values().stream().mapToInt(value -> value.getWinstreak().get()).sum());
             case HIGHESTWINSTREAK:
-                return String.valueOf(stats.values().stream()
-                        .mapToInt(value -> value.getHighestWinstreak().get())
-                        .max()
-                        .orElse(0));
+                return String.valueOf(stats.values().stream().mapToInt(value -> value.getHighestWinstreak().get()).max().orElse(0));
             case KDR:
                 int kills = stats.values().stream().mapToInt(value -> value.getKills().get()).sum();
                 int deaths = stats.values().stream().mapToInt(value -> value.getDeaths().get()).sum();
@@ -186,21 +179,7 @@ public class GroupStatsExpansion extends PlaceholderExpansion {
     }
 
     private enum StatisticType {
-        GAMESPLAYED,
-        BEDSBROKEN,
-        BEDSLOST,
-        KILLS,
-        DEATHS,
-        FINALKILLS,
-        FINALDEATHS,
-        WINS,
-        LOSSES,
-        WINSTREAK,
-        HIGHESTWINSTREAK,
-        KDR,
-        FKDR,
-        BBLR,
-        WLR;
+        GAMESPLAYED, BEDSBROKEN, BEDSLOST, KILLS, DEATHS, FINALKILLS, FINALDEATHS, WINS, LOSSES, WINSTREAK, HIGHESTWINSTREAK, KDR, FKDR, BBLR, WLR;
 
         public static StatisticType fromString(String text) {
             if (text == null) {

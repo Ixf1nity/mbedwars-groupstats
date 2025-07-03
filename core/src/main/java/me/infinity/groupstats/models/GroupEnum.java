@@ -5,12 +5,13 @@ import lombok.Getter;
 @Getter
 public enum GroupEnum {
     SOLO(1, "solos"),
-    DUOS(2,"doubles"),
+    DUOS(2, "doubles"),
     TRIPLES(3, "triples"),
     QUADS(4, "quads");
 
     private final int maxPlayers;
     private final String jsonFormat;
+
     GroupEnum(int maxPlayers, String jsonFormat) {
         this.maxPlayers = maxPlayers;
         this.jsonFormat = jsonFormat;

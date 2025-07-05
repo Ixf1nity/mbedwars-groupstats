@@ -1,17 +1,9 @@
-MONGO:
-  URI-MODE: true
-  NORMAL:
-    HOST: 127.0.0.1
-    PORT: 27017
-    DATABASE: GroupStats
-    AUTHENTICATION:
-      ENABLED: false
-      USERNAME: ''
-      PASSWORD: ''
-  URI:
-    DATABASE: GroupStats
-    CONNECTION_STRING: mongodb://127.0.0.1:27017/GroupStats
+DATABASE:
+  ADDRESS: '127.0.0.1'
+  PORT: 3306
+  DATABASE: 'groupstats'
+  USERNAME: 'username'
+  PASSWORD: 'password'
+  TABLE: "groupstats_solo"
 
-# update ticker (in minutes)
-UPDATE_TIMER: 1
-DEBUG: true
+IS-LOBBY: true

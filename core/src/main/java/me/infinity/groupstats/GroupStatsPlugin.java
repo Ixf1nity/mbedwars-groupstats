@@ -4,13 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import dev.dejvokep.boostedyaml.YamlDocument;
 import lombok.Getter;
-import me.infinity.groupstats.command.TestCommand;
 import me.infinity.groupstats.listeners.GroupStatsListener;
 import me.infinity.groupstats.listeners.ProfileJoinListener;
-import me.infinity.groupstats.manager.GroupManager;
-import me.infinity.groupstats.manager.MongoConnector;
-import me.infinity.groupstats.manager.MongoStorage;
-import me.infinity.groupstats.models.GroupProfile;
+import me.infinity.groupstats.manager.DatabaseInitiator;
+import me.infinity.groupstats.manager.DatabaseController;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -26,9 +23,8 @@ public final class GroupStatsPlugin extends JavaPlugin {
             .create();
 
     private YamlDocument configuration;
-    private MongoConnector mongoConnector;
-    private GroupManager groupManager;
-    private MongoStorage<GroupProfile> mongoStorage;
+    private DatabaseInitiator databaseInitiator;
+    private DatabaseController databaseController;
 
     @Override
     public void onLoad() {
@@ -63,38 +59,23 @@ public final class GroupStatsPlugin extends JavaPlugin {
             return;
         }
 
-        // initialise mongo database;
-        // Add debug logging
-        this.getLogger().info("Initializing MongoDB connection...");
-        this.mongoConnector = new MongoConnector(this, this.configuration);
-        this.mongoConnector.init();
-
-        if (this.mongoConnector.getProfiles() == null) {
-            getLogger().severe("Failed to initialize MongoDB profiles collection!");
-            Bukkit.getPluginManager().disablePlugin(this);
-            return;
-        }
+        this.getLogger().info("Initializing hikari connection...");
+        this.databaseInitiator = new DatabaseInitiator(this);
 
         this.getLogger().info("Loading group manager...");
-        this.groupManager = new GroupManager(this, this.getGson(), mongoConnector.getProfiles());
-
-        this.getLogger().info("Loading MongoDB controller...");
-        this.mongoStorage = new MongoStorage<>(this.groupManager.getProfiles(), gson);
-
-        this.getLogger().info("Registering test command...");
-        this.getServer().getPluginCommand("gstest").setExecutor(new TestCommand(this));
+        this.databaseController = new DatabaseController(this);
 
         this.getLogger().info("Registering event listeners...");
-        this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.groupManager, this), this);
-        this.getServer().getPluginManager().registerEvents(new GroupStatsListener(this.groupManager), this);
 
-        this.getLogger().info("Hooking with PAPI...");
-        new GroupStatsExpansion(this).register();
+        this.getServer().getPluginManager().registerEvents(new ProfileJoinListener(this.databaseController), this);
+        this.getServer().getPluginManager().registerEvents(new GroupStatsListener(this.databaseController), this);
+
+//        this.getLogger().info("Hooking with PAPI...");
+//        new GroupStatsExpansion(this).register();
     }
 
     @Override
     public void onDisable() {
-        this.groupManager.getCache().values().forEach(groupManager::save);
-        this.mongoConnector.shutdown();
+        this.databaseInitiator.disconnect();
     }
 }

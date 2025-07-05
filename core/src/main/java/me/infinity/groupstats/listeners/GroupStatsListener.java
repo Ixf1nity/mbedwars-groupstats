@@ -1,5 +1,6 @@
 package me.infinity.groupstats.listeners;
 
+import com.j256.ormlite.dao.Dao;
 import de.marcely.bedwars.api.GameAPI;
 import de.marcely.bedwars.api.arena.ArenaStatus;
 import de.marcely.bedwars.api.event.arena.*;
@@ -7,134 +8,56 @@ import de.marcely.bedwars.api.event.player.*;
 import lombok.Getter;
 import me.infinity.groupstats.GroupNode;
 import me.infinity.groupstats.models.GroupEnum;
-import me.infinity.groupstats.models.GroupProfile;
-import me.infinity.groupstats.manager.GroupManager;
+import me.infinity.groupstats.manager.DatabaseController;
+import me.infinity.groupstats.models.StatisticType;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.junit.internal.builders.JUnit3Builder;
 
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Getter
 public class GroupStatsListener implements Listener {
 
-    private final GroupManager groupManager;
+    private final DatabaseController databaseController;
+    private final Dao<GroupNode, UUID> controller;
 
-    private final Map<UUID, GroupProfile> cache;
-
-    public GroupStatsListener(GroupManager groupManager) {
-        this.groupManager = groupManager;
-        this.cache = groupManager.getCache();
-    }
-
-    @EventHandler
-    public void onGameStart(RoundStartEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-
-        event.getArena().getPlayers().forEach(player -> {
-            final UUID playerId = player.getUniqueId();
-            CompletableFuture.runAsync(() -> {
-                cache.get(playerId)
-                        .getStatistics()
-                        .putIfAbsent(jsonFormat, new GroupNode());
-            });
-        });
-    }
-
-    @EventHandler
-    public void onTeamEliminated(TeamEliminateEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-        event.getArena().getPlayersInTeam(event.getTeam()).forEach(player -> {
-            final UUID playerId = player.getUniqueId();
-            CompletableFuture.runAsync(() -> {
-                GroupProfile profile = cache.get(playerId);
-                if (profile != null) {
-                    GroupNode stats = profile.getStatistics()
-                            .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                    stats.getLosses().incrementAndGet();
-                    stats.getWinstreak().set(0);
-                }
-            });
-        });
+    public GroupStatsListener(DatabaseController databaseController) {
+        this.databaseController = databaseController;
+        this.controller = databaseController.getStatsController();
     }
 
     @EventHandler
     public void onBedBreak(ArenaBedBreakEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-
         // Handle bed breaker
         final UUID breakerId = event.getPlayer().getUniqueId();
         CompletableFuture.runAsync(() -> {
-            GroupProfile breakerProfile = cache.get(breakerId);
-            if (breakerProfile != null) {
-                GroupNode stats = breakerProfile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-                stats.getBedsBroken().incrementAndGet();
-            }
+            this.databaseController.incrementStatistic(breakerId, StatisticType.BEDSBROKEN);
         });
 
         // Handle victims
         event.getArena().getPlayersInTeam(event.getTeam()).forEach(victim -> {
-            final UUID victimId = victim.getUniqueId();
             CompletableFuture.runAsync(() -> {
-                GroupProfile victimProfile = cache.get(victimId);
-                if (victimProfile != null) {
-                    GroupNode stats = victimProfile.getStatistics()
-                            .computeIfAbsent(jsonFormat, k -> new GroupNode());
-                    stats.getBedsLost().incrementAndGet();
-                }
+                this.databaseController.incrementStatistic(victim.getUniqueId(), StatisticType.BEDSLOST);
             });
         });
     }
 
     @EventHandler
     public void onPlayerKill(PlayerKillPlayerEvent event) {
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-        final boolean isFinalKill = event.getArena().isBedDestroyed(
-                event.getArena().getPlayerTeam(event.getDamaged())
-        );
-
         // Killer stats
         final UUID killerId = event.getKiller().getUniqueId();
-        CompletableFuture.runAsync(() -> {
-            GroupProfile killerProfile = cache.get(killerId);
-            if (killerProfile != null) {
-                GroupNode killerStats = killerProfile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                if (isFinalKill) {
-                    killerStats.getFinalKills().incrementAndGet();
-                } else {
-                    killerStats.getKills().incrementAndGet();
-                }
-            }
-        });
-
-        // Victim stats
         final UUID victimId = event.getDamaged().getUniqueId();
         CompletableFuture.runAsync(() -> {
-            GroupProfile victimProfile = cache.get(victimId);
-            if (victimProfile != null) {
-                GroupNode victimStats = victimProfile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                if (isFinalKill) {
-                    victimStats.getFinalDeaths().incrementAndGet();
-                    victimStats.getGamesPlayed().incrementAndGet();
-                } else {
-                    victimStats.getDeaths().incrementAndGet();
-                }
+            if (event.isFatalDeath()) {
+                this.databaseController.incrementStatistic(killerId, StatisticType.FINALKILLS);
+                this.databaseController.incrementStatistic(victimId, StatisticType.FINALDEATHS);
+                this.databaseController.incrementStatistic(victimId, StatisticType.GAMESPLAYED);
+            } else {
+                this.databaseController.incrementStatistic(killerId, StatisticType.KILLS);
+                this.databaseController.incrementStatistic(victimId, StatisticType.DEATHS);
             }
         });
     }
@@ -145,27 +68,23 @@ public class GroupStatsListener implements Listener {
             return;
         }
 
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-
-        // Handle winners
         event.getWinners().forEach(player -> {
             final UUID playerId = player.getUniqueId();
             CompletableFuture.runAsync(() -> {
-                GroupProfile profile = cache.get(playerId);
-                if (profile != null) {
-                    GroupNode stats = profile.getStatistics()
-                            .computeIfAbsent(jsonFormat, k -> new GroupNode());
+                this.databaseController.incrementStatistic(playerId, StatisticType.WINS);
+                this.databaseController.incrementStatistic(playerId, StatisticType.GAMESPLAYED);
+                this.databaseController.incrementStatistic(playerId, StatisticType.WINSTREAK);
 
-                    stats.getWins().incrementAndGet();
-                    stats.getGamesPlayed().incrementAndGet();
-
-                    final int newWinstreak = stats.getWinstreak().incrementAndGet();
-                    if (newWinstreak > stats.getHighestWinstreak().get()) {
-                        stats.getHighestWinstreak().set(newWinstreak);
-                    }
+                final int newWinstreak = this.databaseController.fetchStatistic(playerId, StatisticType.WINSTREAK);
+                if (newWinstreak > this.databaseController.fetchStatistic(playerId, StatisticType.HIGHESTWINSTREAK)) {
+                    this.databaseController.setStatistic(playerId, StatisticType.HIGHESTWINSTREAK, newWinstreak);
                 }
+                event.getLosers().forEach(uniqueId -> {
+                    CompletableFuture.runAsync(() -> {
+                       this.databaseController.incrementStatistic(uniqueId.getUniqueId(), StatisticType.LOSSES);
+                       this.databaseController.setStatistic(uniqueId.getUniqueId(), StatisticType.WINSTREAK, 0);
+                    });
+                });
             });
         });
     }
@@ -176,20 +95,10 @@ public class GroupStatsListener implements Listener {
         if (GameAPI.get().isSpectator(event.getPlayer())) return;
         if (!event.getReason().isRageQuit()) return;
 
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-
         final UUID playerId = event.getPlayer().getUniqueId();
         CompletableFuture.runAsync(() -> {
-            GroupProfile profile = cache.get(playerId);
-            if (profile != null) {
-                GroupNode stats = profile.getStatistics()
-                        .computeIfAbsent(jsonFormat, k -> new GroupNode());
-
-                stats.getLosses().incrementAndGet();
-                stats.getWinstreak().set(0);
-            }
+            this.databaseController.incrementStatistic(playerId, StatisticType.LOSSES);
+            this.databaseController.setStatistic(playerId, StatisticType.WINSTREAK, 0);
         });
     }
 
@@ -199,15 +108,8 @@ public class GroupStatsListener implements Listener {
         if (event instanceof PlayerKillPlayerEvent) return;
         if (!(event.getPlayer().getLastDamageCause().getCause() == EntityDamageEvent.DamageCause.VOID)) return;
 
-        final int playersPerTeam = event.getArena().getPlayersPerTeam();
-        final GroupEnum groupEnum = GroupEnum.which(playersPerTeam);
-        final String jsonFormat = groupEnum.getJsonFormat();
-
         CompletableFuture.runAsync(() -> {
-            GroupProfile profile = this.cache.get(event.getPlayer().getUniqueId());
-            GroupNode stats = profile.getStatistics()
-                    .computeIfAbsent(jsonFormat, k -> new GroupNode());
-            stats.getDeaths().incrementAndGet();
+            this.databaseController.incrementStatistic(event.getPlayer().getUniqueId(), StatisticType.DEATHS);
         });
     }
 }

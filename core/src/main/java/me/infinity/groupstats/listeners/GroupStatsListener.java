@@ -7,13 +7,11 @@ import de.marcely.bedwars.api.event.arena.*;
 import de.marcely.bedwars.api.event.player.*;
 import lombok.Getter;
 import me.infinity.groupstats.GroupNode;
-import me.infinity.groupstats.models.GroupEnum;
 import me.infinity.groupstats.manager.DatabaseController;
 import me.infinity.groupstats.models.StatisticType;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
-import org.junit.internal.builders.JUnit3Builder;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -68,9 +66,9 @@ public class GroupStatsListener implements Listener {
             return;
         }
 
-        event.getWinners().forEach(player -> {
-            final UUID playerId = player.getUniqueId();
-            CompletableFuture.runAsync(() -> {
+        CompletableFuture.runAsync(() -> {
+            event.getWinners().forEach(player -> {
+                final UUID playerId = player.getUniqueId();
                 this.databaseController.incrementStatistic(playerId, StatisticType.WINS);
                 this.databaseController.incrementStatistic(playerId, StatisticType.GAMESPLAYED);
                 this.databaseController.incrementStatistic(playerId, StatisticType.WINSTREAK);
@@ -79,12 +77,10 @@ public class GroupStatsListener implements Listener {
                 if (newWinstreak > this.databaseController.fetchStatistic(playerId, StatisticType.HIGHESTWINSTREAK)) {
                     this.databaseController.setStatistic(playerId, StatisticType.HIGHESTWINSTREAK, newWinstreak);
                 }
-                event.getLosers().forEach(uniqueId -> {
-                    CompletableFuture.runAsync(() -> {
-                       this.databaseController.incrementStatistic(uniqueId.getUniqueId(), StatisticType.LOSSES);
-                       this.databaseController.setStatistic(uniqueId.getUniqueId(), StatisticType.WINSTREAK, 0);
-                    });
-                });
+            });
+            event.getLosers().forEach(uniqueId -> {
+                this.databaseController.incrementStatistic(uniqueId.getUniqueId(), StatisticType.LOSSES);
+                this.databaseController.setStatistic(uniqueId.getUniqueId(), StatisticType.WINSTREAK, 0);
             });
         });
     }

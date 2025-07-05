@@ -5,7 +5,7 @@ import lombok.Getter;
 @Getter
 public enum StatisticType {
 
-    GAMESPLAYED("gs"), BEDSBROKEN("bb"), BEDSLOST("bl"), KILLS("k"), DEATHS("d"), FINALKILLS("fk"), FINALDEATHS("fd"), WINS("w"), LOSSES("l"), WINSTREAK("ws"), HIGHESTWINSTREAK("hws"), KDR("kdr"), FKDR("fkdr"), BBLR("bblr"), WLR("wlr");
+    GAMESPLAYED("gp"), BEDSBROKEN("bb"), BEDSLOST("bl"), KILLS("k"), DEATHS("d"), FINALKILLS("fk"), FINALDEATHS("fd"), WINS("w"), LOSSES("l"), WINSTREAK("ws"), HIGHESTWINSTREAK("hws"), KDR("kdr"), FKDR("fkdr"), BBLR("bblr"), WLR("wlr");
 
     String column;
 
